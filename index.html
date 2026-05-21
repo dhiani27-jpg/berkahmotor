@@ -508,7 +508,7 @@
         let userRole = ''; 
         let salesChartInstance = null;
         let currentCart = [];
-        let editModeId = null; // Diinisialisasi secara global agar fungsi edit & delete bekerja beriringan
+        let editModeId = null;
 
         const defaultProducts = [
             {id_produk:"P1", kode_barang:"OLI-01", barcode:"1111", nama_barang:"Oli Shell Helix HX7 10W-40", kategori:"Oli Mesin", harga_beli:75000, harga_jual:95000, stok:15, min_stok:5},
@@ -735,6 +735,7 @@
 
         document.getElementById('pos-cash-input').addEventListener('input', calculateCartTotals);
 
+        // KENDALA 1: PERBAIKAN FETCH SIMPAN TRANSAKSI
         function submitPOSPayment() {
             if(currentCart.length === 0) return alert('Gagal! Belum pilih oli/sparepart/jasa!');
             
@@ -769,14 +770,20 @@
             localStorage.setItem('local_sales', JSON.stringify(dbSales));
             localStorage.setItem('local_prod', JSON.stringify(dbProducts));
 
-            // INTEGRASI FETCH AUTOMATIC SYNC TO GOOGLE SHEETS
-            if (WEB_APP_URL !== "https://script.google.com/macros/s/AKfycbyzCWGtgQuqsBCNHwJ-8QfY5hPU1RZLFRbFwELm3LrCZD6M0gM6cMluAEGRzCrEFbChXw/exec") {
+            // PERBAIKAN: Gunakan text/plain agar tidak diblokir saat transaksi kasir berjalan
+            if (WEB_APP_URL !== "") {
                 fetch(WEB_APP_URL, {
                     method: 'POST',
-                    mode: 'no-cors',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                     body: JSON.stringify({ action: "simpan_transaksi", data: dataTrx })
                 }).catch(err => console.error("Gagal sinkronisasi data transaksi ke Sheets: ", err));
+
+                // Sync stok terpotong
+                fetch(WEB_APP_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ action: "sync_master_stok", products: dbProducts })
+                }).catch(err => console.error(err));
             }
 
             printThermalReceipt(dataTrx);
@@ -861,37 +868,27 @@
             document.getElementById('inv-min-stock').value = p.min_stok;
         }
 
-        // FUNGSI BARU: MENGHAPUS PRODUK LANGSUNG DARI APLIKASI KE LOCALSTORAGE & GOOGLE SHEETS
+        // KENDALA 2: FUNGSI HAPUS YANG BENAR DAN SINKRON KE SPREADSHEET
         function deleteProduct(id) {
             let p = dbProducts.find(x => x.id_produk === id);
             if (!p) return;
 
             if (confirm(`Apakah Anda yakin ingin menghapus "${p.nama_barang}"?\nData master stok lokal dan Google Sheets akan segera disinkronkan.`)) {
-                
-                // Cari index lalu hapus dari array lokal
                 let idx = dbProducts.findIndex(x => x.id_produk === id);
                 if (idx !== -1) {
                     dbProducts.splice(idx, 1);
                 }
 
-                // Perbarui Penyimpanan Lokal Browser
                 localStorage.setItem('local_prod', JSON.stringify(dbProducts));
 
-                // INTEGRASI AUTOMATIC SYNC TO GOOGLE SHEETS (KIRIM DATA ARRAY TERBARU)
-                if (WEB_APP_URL !== "https://script.google.com/macros/s/AKfycbyzCWGtgQuqsBCNHwJ-8QfY5hPU1RZLFRbFwELm3LrCZD6M0gM6cMluAEGRzCrEFbChXw/exec") {
+                if (WEB_APP_URL !== "") {
                     fetch(WEB_APP_URL, {
                         method: 'POST',
-                        mode: 'no-cors',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                         body: JSON.stringify({ action: "sync_master_stok", products: dbProducts })
-                    })
-                    .then(() => {
-                        console.log("Sinkronisasi pasca hapus item sukses dikirim.");
-                    })
-                    .catch(err => console.error("Gagal sinkronisasi update hapus item ke Sheets: ", err));
+                    }).catch(err => console.error("Gagal update hapus item ke Sheets: ", err));
                 }
 
-                // Render Ulang Seluruh Komponen Terkait
                 renderInventoryTable();
                 renderPOSProducts();
                 alert(`Sukses! "${p.nama_barang}" berhasil dihapus dari database.`);
@@ -910,10 +907,8 @@
                         <td class="text-end text-money">Rp ${parseInt(p.harga_jual).toLocaleString('id-ID')}</td>
                         <td class="text-center fw-bold">${p.kategori === 'Jasa Servis' ? '∞' : p.stok}</td>
                         <td class="text-center">
-                            <div class="btn-group gap-1">
-                                <button class="btn btn-sm btn-warning rounded" onclick="editProduct('${p.id_produk}')" title="Edit Item"><i class="fas fa-edit"></i></button>
-                                <button class="btn btn-sm btn-outline-danger rounded" onclick="deleteProduct('${p.id_produk}')" title="Hapus Item Master"><i class="fas fa-trash"></i></button>
-                            </div>
+                            <button class="btn btn-sm btn-warning" onclick="editProduct('${p.id_produk}')"><i class="fas fa-edit"></i></button>
+                            <button class="btn btn-sm btn-outline-danger ms-1" onclick="deleteProduct('${p.id_produk}')"><i class="fas fa-trash"></i></button>
                         </td>
                     </tr>
                 `;
@@ -921,6 +916,7 @@
             document.getElementById('inv-product-table').innerHTML = html;
         }
 
+        // KENDALA 3: FUNGSI SIMPAN BARANG BARU YANG SINKRON KE SPREADSHEET
         function saveProductData(e) {
             e.preventDefault();
             
@@ -953,12 +949,11 @@
             
             localStorage.setItem('local_prod', JSON.stringify(dbProducts));
 
-            // INTEGRASI FETCH AUTOMATIC SYNC MASTER STOK TO GOOGLE SHEETS
-            if (WEB_APP_URL !== "https://script.google.com/macros/s/AKfycbyzCWGtgQuqsBCNHwJ-8QfY5hPU1RZLFRbFwELm3LrCZD6M0gM6cMluAEGRzCrEFbChXw/exec") {
+            // PERBAIKAN: Gunakan text/plain agar bisa mengirim payload POST dengan baik tanpa diblokir
+            if (WEB_APP_URL !== "") {
                 fetch(WEB_APP_URL, {
                     method: 'POST',
-                    mode: 'no-cors',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                     body: JSON.stringify({ action: "sync_master_stok", products: dbProducts })
                 }).catch(err => console.error("Gagal sinkronisasi master stok ke Sheets: ", err));
             }
@@ -971,7 +966,7 @@
 
         function printThermalReceipt(d) {
             document.getElementById('p-shop-name').innerText = document.getElementById('cfg-shop-name').value;
-            document.getElementById('p-shop-address').innerText = document.getElementById('cfg-shop-address').value;
+            document.getElementById('p-shop-addr').innerText = document.getElementById('cfg-shop-address').value;
             
             document.getElementById('print-header-meta').innerHTML = `
                 <div class="p-flex"><span>No:</span><span>${d.id_transaksi}</span></div>
