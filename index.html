@@ -523,24 +523,79 @@
             setupEvents();
         });
 
-        function loadDatabaseSession() {
-            if(localStorage.getItem('local_prod')) dbProducts = JSON.parse(localStorage.getItem('local_prod'));
-            else dbProducts = defaultProducts;
+        async function loadDatabaseSession() {
+    try {
 
-            if(localStorage.getItem('local_sales')) dbSales = JSON.parse(localStorage.getItem('local_sales'));
+        // ==============================
+        // LOAD DATA DARI GOOGLE SHEET
+        // ==============================
+        if (WEB_APP_URL !== "") {
+            const response = await fetch(WEB_APP_URL + '?action=get_all_data');
+            const result = await response.json();
 
-            if(localStorage.getItem('shop_name')) {
-                document.getElementById('cfg-shop-name').value = localStorage.getItem('shop_name');
-                document.getElementById('cfg-shop-address').value = localStorage.getItem('shop_address');
+            if (result.products && Array.isArray(result.products)) {
+                dbProducts = result.products;
+                localStorage.setItem('local_prod', JSON.stringify(dbProducts));
+            } else {
+                dbProducts = defaultProducts;
             }
 
-            let savedRole = localStorage.getItem('session_role');
-            if(savedRole) {
-                executeLoginSession(savedRole);
-            } else {
-                document.getElementById('login-screen').style.setProperty('display', 'flex', 'important');
+            if (result.sales && Array.isArray(result.sales)) {
+                dbSales = result.sales;
+                localStorage.setItem('local_sales', JSON.stringify(dbSales));
             }
         }
+
+        // ==============================
+        // FALLBACK LOCAL STORAGE
+        // ==============================
+        else {
+            if(localStorage.getItem('local_prod')) {
+                dbProducts = JSON.parse(localStorage.getItem('local_prod'));
+            } else {
+                dbProducts = defaultProducts;
+            }
+
+            if(localStorage.getItem('local_sales')) {
+                dbSales = JSON.parse(localStorage.getItem('local_sales'));
+            }
+        }
+
+        // ==============================
+        // SETTINGS NOTA
+        // ==============================
+        if(localStorage.getItem('shop_name')) {
+            document.getElementById('cfg-shop-name').value = localStorage.getItem('shop_name');
+            document.getElementById('cfg-shop-address').value = localStorage.getItem('shop_address');
+        }
+
+        // ==============================
+        // LOGIN SESSION
+        // ==============================
+        let savedRole = localStorage.getItem('session_role');
+
+        if(savedRole) {
+            executeLoginSession(savedRole);
+        } else {
+            document.getElementById('login-screen').style.setProperty('display', 'flex', 'important');
+        }
+
+    } catch(err) {
+
+        console.error('Gagal load database:', err);
+
+        // fallback local
+        if(localStorage.getItem('local_prod')) {
+            dbProducts = JSON.parse(localStorage.getItem('local_prod'));
+        } else {
+            dbProducts = defaultProducts;
+        }
+
+        if(localStorage.getItem('local_sales')) {
+            dbSales = JSON.parse(localStorage.getItem('local_sales'));
+        }
+    }
+}
 
         function doLogin(role) {
             let correctPassword = role === 'Owner' ? 'owner123' : 'kasir123';
@@ -672,7 +727,7 @@
                 html += `
                     <tr class="${isLow ? 'stok-menipis' : ''}">
                         <td><strong>${p.nama_barang}</strong><br><small class="text-muted">${p.kode_barang} (${p.kategori})</small></td>
-                        <td class="text-end text-money">Rp ${parseInt(p.harga_jual).toLocaleString('id-ID')}</td>
+                        <td class="text-end text-money">Rp ${parseInt(p.harga_jual || 0).toLocaleString('id-ID')}</td>
                         <td class="text-center">${p.kategori === 'Jasa Servis' ? '∞' : p.stok}</td>
                         <td class="text-center"><button class="btn btn-sm btn-danger" onclick="addCart('${p.id_produk}')">+</button></td>
                     </tr>
@@ -682,7 +737,10 @@
         }
 
         function addCart(id) {
-            let p = dbProducts.find(x => x.id_produk === id);
+            let p = dbProducts.find(x =>
+    x.id_produk === id ||
+    x.kode_barang === id
+);
             if(!p) return;
             let exist = currentCart.find(c => c.id_produk === id);
             if(exist) {
@@ -851,7 +909,10 @@
         }
 
         function editProduct(id) {
-            let p = dbProducts.find(x => x.id_produk === id);
+          let p = dbProducts.find(x =>
+    x.id_produk === id ||
+    x.kode_barang === id
+);
             if(!p) return;
             
             editModeId = id;
@@ -869,31 +930,62 @@
         }
 
         // KENDALA 2: FUNGSI HAPUS YANG BENAR DAN SINKRON KE SPREADSHEET
-        function deleteProduct(id) {
-            let p = dbProducts.find(x => x.id_produk === id);
-            if (!p) return;
+        async function deleteProduct(id) {
 
-            if (confirm(`Apakah Anda yakin ingin menghapus "${p.nama_barang}"?\nData master stok lokal dan Google Sheets akan segera disinkronkan.`)) {
-                let idx = dbProducts.findIndex(x => x.id_produk === id);
-                if (idx !== -1) {
-                    dbProducts.splice(idx, 1);
-                }
+    let p = dbProducts.find(x =>
+    x.id_produk === id ||
+    x.kode_barang === id
+);
 
-                localStorage.setItem('local_prod', JSON.stringify(dbProducts));
+    if (!p) return;
 
-                if (WEB_APP_URL !== "") {
-                    fetch(WEB_APP_URL, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                        body: JSON.stringify({ action: "sync_master_stok", products: dbProducts })
-                    }).catch(err => console.error("Gagal update hapus item ke Sheets: ", err));
-                }
+    if (!confirm(`Hapus ${p.nama_barang} ?`)) {
+        return;
+    }
 
-                renderInventoryTable();
-                renderPOSProducts();
-                alert(`Sukses! "${p.nama_barang}" berhasil dihapus dari database.`);
-            }
-        }
+    try {
+
+        // ==========================
+        // HAPUS LOCAL
+        // ==========================
+        dbProducts = dbProducts.filter(x =>
+    x.id_produk !== id &&
+    x.kode_barang !== id
+);
+
+        localStorage.setItem('local_prod', JSON.stringify(dbProducts));
+
+        // ==========================
+        // SYNC GOOGLE SHEET
+        // ==========================
+        const response = await fetch(WEB_APP_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'text/plain;charset=utf-8'
+            },
+            body: JSON.stringify({
+                action: 'sync_master_stok',
+                products: dbProducts
+            })
+        });
+
+        const result = await response.text();
+
+        console.log(result);
+
+        // ==========================
+        // REFRESH ULANG
+        // ==========================
+        await refreshDatabaseFromSheet();
+
+        alert('Produk berhasil dihapus dan sinkron ke Google Sheet');
+
+    } catch(err) {
+
+        console.error(err);
+        alert('Gagal menghapus data');
+    }
+}
 
         function renderInventoryTable() {
             let html = '';
@@ -901,15 +993,20 @@
                 let isLow = parseInt(p.stok) <= parseInt(p.min_stok) && p.kategori !== "Jasa Servis";
                 html += `
                      <tr class="${isLow ? 'stok-menipis' : ''}">
-                        <td><code>${p.kode_barang}</code></td>
-                        <td><strong>${p.nama_barang}</strong></td>
+                        <td><code>${p.kode_barang || '-'}</code></td>
+                        <td><strong>${p.nama_barang || '-'}</strong></td>
                         <td><span class="badge bg-secondary">${p.kategori}</span></td>
-                        <td class="text-end text-money">Rp ${parseInt(p.harga_jual).toLocaleString('id-ID')}</td>
+                        <td class="text-end text-money">Rp ${parseInt(p.harga_jual || 0).toLocaleString('id-ID')}</td>
                         <td class="text-center fw-bold">${p.kategori === 'Jasa Servis' ? '∞' : p.stok}</td>
                         <td class="text-center">
-                            <button class="btn btn-sm btn-warning" onclick="editProduct('${p.id_produk}')"><i class="fas fa-edit"></i></button>
-                            <button class="btn btn-sm btn-outline-danger ms-1" onclick="deleteProduct('${p.id_produk}')"><i class="fas fa-trash"></i></button>
-                        </td>
+    <button class="btn btn-sm btn-warning" onclick="editProduct('${p.id_produk || p.kode_barang}')">
+        <i class="fas fa-edit"></i>
+    </button>
+
+    <button class="btn btn-sm btn-outline-danger ms-1" onclick="deleteProduct('${p.id_produk || p.kode_barang}')">
+        <i class="fas fa-trash"></i>
+    </button>
+</td>
                     </tr>
                 `;
             });
@@ -917,52 +1014,173 @@
         }
 
         // KENDALA 3: FUNGSI SIMPAN BARANG BARU YANG SINKRON KE SPREADSHEET
-        function saveProductData(e) {
-            e.preventDefault();
-            
-            if (editModeId !== null) {
-                let p = dbProducts.find(x => x.id_produk === editModeId);
-                if (p) {
-                    p.kode_barang = document.getElementById('inv-code').value;
-                    p.barcode = document.getElementById('inv-barcode').value;
-                    p.nama_barang = document.getElementById('inv-name').value;
-                    p.kategori = document.getElementById('inv-category').value;
-                    p.harga_beli = parseInt(document.getElementById('inv-price-buy').value);
-                    p.harga_jual = parseInt(document.getElementById('inv-price-sell').value);
-                    p.stok = parseInt(document.getElementById('inv-stock').value);
-                    p.min_stok = parseInt(document.getElementById('inv-min-stock').value);
-                }
-            } else {
-                let newP = {
-                    id_produk: 'P-' + Date.now(),
-                    kode_barang: document.getElementById('inv-code').value,
-                    barcode: document.getElementById('inv-barcode').value,
-                    nama_barang: document.getElementById('inv-name').value,
-                    kategori: document.getElementById('inv-category').value,
-                    harga_beli: parseInt(document.getElementById('inv-price-buy').value),
-                    harga_jual: parseInt(document.getElementById('inv-price-sell').value),
-                    stok: parseInt(document.getElementById('inv-stock').value),
-                    min_stok: parseInt(document.getElementById('inv-min-stock').value)
+        async function refreshDatabaseFromSheet() {
+
+    try {
+
+        const response = await fetch(WEB_APP_URL + '?action=get_all_data');
+        const result = await response.json();
+
+        // =========================
+        // NORMALISASI DATA PRODUCT
+        // =========================
+        if (result.products && Array.isArray(result.products)) {
+
+            dbProducts = result.products.map((p, index) => {
+
+                return {
+                    id_produk: p.id_produk || p.id || ('P-' + index),
+
+                    kode_barang:
+                        p.kode_barang ||
+                        p.kode ||
+                        '',
+
+                    barcode:
+                        p.barcode || '',
+
+                    nama_barang:
+                        p.nama_barang ||
+                        p.nama ||
+                        '',
+
+                    kategori:
+                        p.kategori ||
+                        'Sparepart',
+
+                    harga_beli:
+                        parseInt(
+                            p.harga_beli ||
+                            p.hpp ||
+                            0
+                        ),
+
+                    harga_jual:
+                        parseInt(
+                            p.harga_jual ||
+                            p.harga ||
+                            0
+                        ),
+
+                    stok:
+                        parseInt(
+                            p.stok ||
+                            p.stock ||
+                            0
+                        ),
+
+                    min_stok:
+                        parseInt(
+                            p.min_stok ||
+                            p.minimum ||
+                            0
+                        )
                 };
-                dbProducts.push(newP);
-            }
-            
-            localStorage.setItem('local_prod', JSON.stringify(dbProducts));
 
-            // PERBAIKAN: Gunakan text/plain agar bisa mengirim payload POST dengan baik tanpa diblokir
-            if (WEB_APP_URL !== "") {
-                fetch(WEB_APP_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    body: JSON.stringify({ action: "sync_master_stok", products: dbProducts })
-                }).catch(err => console.error("Gagal sinkronisasi master stok ke Sheets: ", err));
-            }
+            });
 
-            toggleProductForm(false);
-            renderInventoryTable();
-            renderPOSProducts();
-            alert('Sukses! Data master berhasil disimpan.');
+            localStorage.setItem(
+                'local_prod',
+                JSON.stringify(dbProducts)
+            );
         }
+
+        // =========================
+        // SALES
+        // =========================
+        if (result.sales && Array.isArray(result.sales)) {
+
+            dbSales = result.sales;
+
+            localStorage.setItem(
+                'local_sales',
+                JSON.stringify(dbSales)
+            );
+        }
+
+        // =========================
+        // REFRESH TAMPILAN
+        // =========================
+        renderInventoryTable();
+        renderPOSProducts();
+
+    } catch(err) {
+
+        console.error('Gagal refresh database:', err);
+
+    }
+}
+
+async function saveProductData(e) {
+    e.preventDefault();
+
+    if (editModeId !== null) {
+
+        let p = dbProducts.find(x =>
+    x.id_produk === editModeId ||
+    x.kode_barang === editModeId
+);
+
+        if (p) {
+            p.kode_barang = document.getElementById('inv-code').value;
+            p.barcode = document.getElementById('inv-barcode').value;
+            p.nama_barang = document.getElementById('inv-name').value;
+            p.kategori = document.getElementById('inv-category').value;
+            p.harga_beli = parseInt(document.getElementById('inv-price-buy').value);
+            p.harga_jual = parseInt(document.getElementById('inv-price-sell').value);
+            p.stok = parseInt(document.getElementById('inv-stock').value);
+            p.min_stok = parseInt(document.getElementById('inv-min-stock').value);
+        }
+
+    } else {
+
+        let newP = {
+            id_produk: 'P-' + Date.now(),
+            kode_barang: document.getElementById('inv-code').value,
+            barcode: document.getElementById('inv-barcode').value,
+            nama_barang: document.getElementById('inv-name').value,
+            kategori: document.getElementById('inv-category').value,
+            harga_beli: parseInt(document.getElementById('inv-price-buy').value),
+            harga_jual: parseInt(document.getElementById('inv-price-sell').value),
+            stok: parseInt(document.getElementById('inv-stock').value),
+            min_stok: parseInt(document.getElementById('inv-min-stock').value)
+        };
+
+        dbProducts.unshift(newP);
+    }
+
+    localStorage.setItem('local_prod', JSON.stringify(dbProducts));
+
+    try {
+
+        if (WEB_APP_URL !== "") {
+
+            await fetch(WEB_APP_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'text/plain;charset=utf-8'
+                },
+                body: JSON.stringify({
+                    action: "sync_master_stok",
+                    products: dbProducts
+                })
+            });
+
+            await refreshDatabaseFromSheet();
+        }
+
+        toggleProductForm(false);
+        renderInventoryTable();
+        renderPOSProducts();
+
+        alert('Sukses! Data master berhasil disimpan.');
+
+    } catch(err) {
+
+        console.error(err);
+        alert('Gagal sinkronisasi ke Google Sheet');
+    }
+}
 
         function printThermalReceipt(d) {
             document.getElementById('p-shop-name').innerText = document.getElementById('cfg-shop-name').value;
