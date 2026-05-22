@@ -781,16 +781,35 @@
         function qtyCart(i, q) { if(q <= 0) { delCart(i); return; } currentCart[i].qty = q; currentCart[i].subtotal = q * currentCart[i].harga_jual; renderCart(); }
         function delCart(i) { currentCart.splice(i,1); renderCart(); }
 
-        function calculateCartTotals() {
-            let sub = currentCart.reduce((s, a) => s + a.subtotal, 0);
-            let disc = parseInt(document.getElementById('pos-discount').value) || 0;
-            let grand = Math.max(0, sub - disc);
-            document.getElementById('pos-grand-total').innerText = `Rp ${grand.toLocaleString('id-ID')}`;
-            document.getElementById('pos-grand-total').dataset.value = grand;
+       function calculateCartTotals() {
 
-            let cash = parseInt(document.getElementById('pos-cash-input').value) || 0;
-            document.getElementById('pos-change').innerText = `Rp ${cash >= grand ? (cash - grand).toLocaleString('id-ID') : 0}`;
-        }
+    let sub = currentCart.reduce((s, a) => s + a.subtotal, 0);
+
+    let disc =
+        parseInt(document.getElementById('pos-discount').value) || 0;
+
+    let grand = Math.max(0, sub - disc);
+
+    // TOTAL
+    document.getElementById('pos-grand-total').innerText =
+        'Rp ' + grand.toLocaleString('id-ID');
+
+    // SIMPAN VALUE TANPA DATASET
+    window.currentGrandTotal = grand;
+
+    // CASH
+    let cash =
+        parseInt(document.getElementById('pos-cash-input').value) || 0;
+
+    let kembali = 0;
+
+    if (cash >= grand) {
+        kembali = cash - grand;
+    }
+
+    document.getElementById('pos-change').innerText =
+        'Rp ' + kembali.toLocaleString('id-ID');
+}
 
         document.getElementById('pos-cash-input').addEventListener('input', calculateCartTotals);
 
