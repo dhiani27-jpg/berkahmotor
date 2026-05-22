@@ -781,25 +781,25 @@
         function qtyCart(i, q) { if(q <= 0) { delCart(i); return; } currentCart[i].qty = q; currentCart[i].subtotal = q * currentCart[i].harga_jual; renderCart(); }
         function delCart(i) { currentCart.splice(i,1); renderCart(); }
 
-       function calculateCartTotals() {
+      function calculateCartTotals() {
 
     let sub = currentCart.reduce((s, a) => s + a.subtotal, 0);
 
-    let disc =
-        parseInt(document.getElementById('pos-discount').value) || 0;
+    let disc = parseInt(document.getElementById('pos-discount').value) || 0;
 
     let grand = Math.max(0, sub - disc);
 
-    // TOTAL
-    document.getElementById('pos-grand-total').innerText =
-        'Rp ' + grand.toLocaleString('id-ID');
-
-    // SIMPAN VALUE TANPA DATASET
     window.currentGrandTotal = grand;
 
-    // CASH
+    document.getElementById('pos-grand-total').innerText =
+        `Rp ${grand.toLocaleString('id-ID')}`;
+
     let cash =
         parseInt(document.getElementById('pos-cash-input').value) || 0;
+
+    document.getElementById('pos-change').innerText =
+        `Rp ${cash >= grand ? (cash - grand).toLocaleString('id-ID') : 0}`;
+}
 
     let kembali = 0;
 
@@ -817,7 +817,7 @@
         function submitPOSPayment() {
             if(currentCart.length === 0) return alert('Gagal! Belum pilih oli/sparepart/jasa!');
             
-            let grand = parseInt(document.getElementById('pos-grand-total').dataset.value);
+            let grand = window.currentGrandTotal || 0;
             let cash = parseInt(document.getElementById('pos-cash-input').value) || 0;
             if(cash < grand) return alert('Gagal! Uang pembayaran kurang.');
 
