@@ -1226,49 +1226,177 @@ async function saveProductData(e) {
         }
 
         function renderFinancialReports() {
-            let omzet = dbSales.reduce((s, a) => s + a.total, 0);
-            let hpp = dbSales.reduce((s, a) => {
-    let m = 0;
 
-    a.items.forEach(i => {
-        m += (parseInt(i.harga_beli || 0) * i.qty);
+    // =====================================
+    // HITUNG OMZET DAN HPP
+    // =====================================
+
+    let omzet = dbSales.reduce((s, a) => s + (parseInt(a.total) || 0), 0);
+
+    let hpp = dbSales.reduce((s, trx) => {
+
+        let modal = 0;
+
+        trx.items.forEach(item => {
+
+            modal += (parseInt(item.harga_beli || 0) * parseInt(item.qty || 0));
+
+        });
+
+        return s + modal;
+
+    }, 0);
+
+    // =====================================
+    // TAMPILKAN SUMMARY
+    // =====================================
+
+    document.getElementById('rep-total-omzet').innerText =
+        `Rp ${omzet.toLocaleString('id-ID')}`;
+
+    document.getElementById('rep-total-hpp').innerText =
+        `Rp ${hpp.toLocaleString('id-ID')}`;
+
+    document.getElementById('rep-laba-kotor').innerText =
+        `Rp ${(omzet - hpp).toLocaleString('id-ID')}`;
+
+    // =====================================
+    // REKAP JASA DAN SPAREPART
+    // =====================================
+
+    let rekapJasa = {};
+    let rekapPart = {};
+
+    dbSales.forEach(trx => {
+
+        if (!trx.items || !Array.isArray(trx.items)) return;
+
+        trx.items.forEach(item => {
+
+            // =====================================
+            // AMBIL KATEGORI LANGSUNG DARI TRANSAKSI
+            // =====================================
+
+            let kat = item.kategori;
+
+            // fallback transaksi lama
+            if (!kat) {
+
+                let nama = (item.nama_barang || '').toLowerCase();
+
+                if (
+                    nama.includes('jasa') ||
+                    nama.includes('service') ||
+                    nama.includes('servis') ||
+                    nama.includes('ganti oli')
+                ) {
+
+                    kat = 'Jasa Servis';
+
+                } else {
+
+                    kat = 'Sparepart';
+
+                }
+            }
+
+            // =====================================
+            // REKAP JASA
+            // =====================================
+
+            if (kat === 'Jasa Servis') {
+
+                if (!rekapJasa[item.nama_barang]) {
+
+                    rekapJasa[item.nama_barang] = {
+                        qty: 0,
+                        total: 0
+                    };
+
+                }
+
+                rekapJasa[item.nama_barang].qty += parseInt(item.qty || 0);
+
+                rekapJasa[item.nama_barang].total +=
+                    parseInt(item.subtotal || 0);
+
+            }
+
+            // =====================================
+            // REKAP SPAREPART
+            // =====================================
+
+            else {
+
+                if (!rekapPart[item.nama_barang]) {
+
+                    rekapPart[item.nama_barang] = {
+                        qty: 0,
+                        total: 0
+                    };
+
+                }
+
+                rekapPart[item.nama_barang].qty += parseInt(item.qty || 0);
+
+                rekapPart[item.nama_barang].total +=
+                    parseInt(item.subtotal || 0);
+            }
+
+        });
+
     });
 
-    return s + m;
-}, 0);
+    // =====================================
+    // RENDER TABLE JASA
+    // =====================================
 
-            document.getElementById('rep-total-omzet').innerText = `Rp ${omzet.toLocaleString('id-ID')}`;
-            document.getElementById('rep-total-hpp').innerText = `Rp ${hpp.toLocaleString('id-ID')}`;
-            document.getElementById('rep-laba-kotor').innerText = `Rp ${(omzet - hpp).toLocaleString('id-ID')}`;
+    let jHtml = '';
 
-            let rekapJasa = {}; let rekapPart = {};
-            dbSales.forEach(trx => {
-                trx.items.forEach(item => {
-                    let origin = dbProducts.find(p => p.id_produk === item.id_produk);
-                    let kat = origin ? origin.kategori : 'Sparepart';
+    for (let nama in rekapJasa) {
 
-                    if(kat === 'Jasa Servis') {
-                        if(!rekapJasa[item.nama_barang]) rekapJasa[item.nama_barang] = { qty:0, total:0 };
-                        rekapJasa[item.nama_barang].qty += item.qty; rekapJasa[item.nama_barang].total += item.subtotal;
-                    } else {
-                        if(!rekapPart[item.nama_barang]) rekapPart[item.nama_barang] = { qty:0, total:0 };
-                        rekapPart[item.nama_barang].qty += item.qty; rekapPart[item.nama_barang].total += item.subtotal;
-                    }
-                });
-            });
+        jHtml += `
+            <tr>
+                <td>${nama}</td>
+                <td class="text-center">
+                    ${rekapJasa[nama].qty}x
+                </td>
+                <td class="text-end text-money">
+                    Rp ${rekapJasa[nama].total.toLocaleString('id-ID')}
+                </td>
+            </tr>
+        `;
+    }
 
-            let jHtml = '';
-            for(let name in rekapJasa) {
-                jHtml += `<tr><td>${name}</td><td class="text-center">${rekapJasa[name].qty}x</td><td class="text-end text-money">Rp ${rekapJasa[name].total.toLocaleString('id-ID')}</td></tr>`;
-            }
-            document.getElementById('rep-services-body').innerHTML = jHtml || '<tr><td colspan="3" class="text-center">Belum ada data jasa</td></tr>';
+    document.getElementById('rep-services-body').innerHTML =
+        jHtml ||
+        '<tr><td colspan="3" class="text-center text-muted">Belum ada data jasa</td></tr>';
 
-            let pHtml = '';
-            for(let name in rekapPart) {
-                pHtml += `<tr><td>${name}</td><td class="text-center">${rekapPart[name].qty} Pcs</td><td class="text-end text-money">Rp ${rekapPart[name].total.toLocaleString('id-ID')}</td></tr>`;
-            }
-            document.getElementById('rep-parts-body').innerHTML = pHtml || '<tr><td colspan="3" class="text-center">Belum ada data sparepart terjual</td></tr>';
-        }
+    // =====================================
+    // RENDER TABLE SPAREPART
+    // =====================================
+
+    let pHtml = '';
+
+    for (let nama in rekapPart) {
+
+        pHtml += `
+            <tr>
+                <td>${nama}</td>
+                <td class="text-center">
+                    ${rekapPart[nama].qty} Pcs
+                </td>
+                <td class="text-end text-money">
+                    Rp ${rekapPart[nama].total.toLocaleString('id-ID')}
+                </td>
+            </tr>
+        `;
+    }
+
+    document.getElementById('rep-parts-body').innerHTML =
+        pHtml ||
+        '<tr><td colspan="3" class="text-center text-muted">Belum ada data sparepart</td></tr>';
+}
 
         function saveSettingsConfig() {
             localStorage.setItem('shop_name', document.getElementById('cfg-shop-name').value);
