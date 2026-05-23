@@ -1193,73 +1193,155 @@
 }
 
 async function saveProductData(e) {
+
     e.preventDefault();
-
-    if (editModeId !== null) {
-
-        let p = dbProducts.find(x =>
-    x.id_produk === editModeId ||
-    x.kode_barang === editModeId
-);
-
-        if (p) {
-            p.kode_barang = document.getElementById('inv-code').value;
-            p.barcode = document.getElementById('inv-barcode').value;
-            p.nama_barang = document.getElementById('inv-name').value;
-            p.kategori = document.getElementById('inv-category').value;
-            p.harga_beli = parseInt(document.getElementById('inv-price-buy').value);
-            p.harga_jual = parseInt(document.getElementById('inv-price-sell').value);
-            p.stok = parseInt(document.getElementById('inv-stock').value);
-            p.min_stok = parseInt(document.getElementById('inv-min-stock').value);
-        }
-
-    } else {
-
-        let newP = {
-            id_produk: 'P-' + Date.now(),
-            kode_barang: document.getElementById('inv-code').value,
-            barcode: document.getElementById('inv-barcode').value,
-            nama_barang: document.getElementById('inv-name').value,
-            kategori: document.getElementById('inv-category').value,
-            harga_beli: parseInt(document.getElementById('inv-price-buy').value),
-            harga_jual: parseInt(document.getElementById('inv-price-sell').value),
-            stok: parseInt(document.getElementById('inv-stock').value),
-            min_stok: parseInt(document.getElementById('inv-min-stock').value)
-        };
-
-        dbProducts.unshift(newP);
-    }
-
-    localStorage.setItem('local_prod', JSON.stringify(dbProducts));
 
     try {
 
+        // =====================================
+        // EDIT MODE
+        // =====================================
+
+        if (editModeId !== null) {
+
+            let p = dbProducts.find(x =>
+                x.id_produk === editModeId ||
+                x.kode_barang === editModeId
+            );
+
+            if (p) {
+
+                p.kode_barang =
+                    document.getElementById('inv-code').value;
+
+                p.barcode =
+                    document.getElementById('inv-barcode').value;
+
+                p.nama_barang =
+                    document.getElementById('inv-name').value;
+
+                p.kategori =
+                    document.getElementById('inv-category').value;
+
+                p.harga_beli =
+                    parseInt(document.getElementById('inv-price-buy').value);
+
+                p.harga_jual =
+                    parseInt(document.getElementById('inv-price-sell').value);
+
+                p.stok =
+                    parseInt(document.getElementById('inv-stock').value);
+
+                p.min_stok =
+                    parseInt(document.getElementById('inv-min-stock').value);
+            }
+
+        }
+
+        // =====================================
+        // TAMBAH BARU
+        // =====================================
+
+        else {
+
+            let newP = {
+
+                id_produk: 'P-' + Date.now(),
+
+                kode_barang:
+                    document.getElementById('inv-code').value,
+
+                barcode:
+                    document.getElementById('inv-barcode').value,
+
+                nama_barang:
+                    document.getElementById('inv-name').value,
+
+                kategori:
+                    document.getElementById('inv-category').value,
+
+                harga_beli:
+                    parseInt(document.getElementById('inv-price-buy').value),
+
+                harga_jual:
+                    parseInt(document.getElementById('inv-price-sell').value),
+
+                stok:
+                    parseInt(document.getElementById('inv-stock').value),
+
+                min_stok:
+                    parseInt(document.getElementById('inv-min-stock').value)
+            };
+
+            dbProducts.unshift(newP);
+        }
+
+        // =====================================
+        // SIMPAN LOCAL
+        // =====================================
+
+        localStorage.setItem(
+            'local_prod',
+            JSON.stringify(dbProducts)
+        );
+
+        // =====================================
+        // SYNC KE GOOGLE SHEET
+        // =====================================
+
         if (WEB_APP_URL !== "") {
 
-            await fetch(WEB_APP_URL, {
+            const response = await fetch(WEB_APP_URL, {
+
                 method: 'POST',
+
                 headers: {
-                    'Content-Type': 'text/plain;charset=utf-8'
+                    'Content-Type':
+                        'text/plain;charset=utf-8'
                 },
+
                 body: JSON.stringify({
+
                     action: "sync_master_stok",
+
                     products: dbProducts
                 })
             });
 
-            await refreshDatabaseFromSheet();
+            const text = await response.text();
+
+            console.log(text);
         }
 
+        // =====================================
+        // REFRESH UI
+        // =====================================
+
         toggleProductForm(false);
+
         renderInventoryTable();
+
         renderPOSProducts();
 
-        alert('Sukses! Data master berhasil disimpan.');
+        editModeId = null;
 
-    } catch(err) {
+        // =====================================
+        // NOTIF SUKSES
+        // =====================================
+
+        alert(
+            'Sukses! Data master berhasil disimpan.'
+        );
+
+    }
+
+    catch(err) {
 
         console.error(err);
-        alert('Gagal sinkronisasi ke Google Sheet');
+
+        alert(
+            'Terjadi error:\n' + err.message
+        );
     }
 }
 
