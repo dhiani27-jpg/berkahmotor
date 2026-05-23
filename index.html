@@ -119,22 +119,37 @@
         /* ==========================================================================
            CSS MEDIA PRINT: NOTA THERMAL UKURAN STRUK KASIR 58MM
            ========================================================================== */
-        @media print {
-            body * { visibility: hidden; }
-            #print-area, #print-area * {
-                visibility: visible;
-                color: #000 !important;
-                background: #fff !important;
-            }
-            #print-area {
-                position: absolute;
-                left: 0; top: 0;
-                width: 54mm;
-                font-family: 'Courier New', Courier, monospace;
-                font-size: 10px;
-                line-height: 1.3;
-                padding: 0; margin: 0;
-            }
+        /* NORMAL MODE */
+#print-area{
+    display:none;
+}
+
+/* MODE PRINT */
+@media print {
+
+    body * {
+        visibility: hidden;
+    }
+
+    #print-area,
+    #print-area * {
+        visibility: visible;
+    }
+
+    #print-area{
+        display:block !important;
+        position:absolute;
+        left:0;
+        top:0;
+        width:54mm;
+        background:#fff !important;
+        color:#000 !important;
+    }
+
+    @page{
+        margin:0;
+    }
+}
             .p-line { border-top: 1px dashed #000; margin: 4px 0; }
             .p-text-center { text-align: center; }
             .p-text-right { text-align: right; }
