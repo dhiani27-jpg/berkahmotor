@@ -741,40 +741,201 @@
         }
 
         function renderDashboardData() {
-            let omzet = dbSales.reduce((s, a) => s + a.total, 0);
-            let hpp = dbSales.reduce((s, a) => {
-    let m = 0;
 
-    a.items.forEach(i => {
-        m += (parseInt(i.harga_beli || 0) * i.qty);
+    // =====================================
+    // HITUNG SUMMARY
+    // =====================================
+
+    let omzet = dbSales.reduce(
+        (s, a) => s + (parseInt(a.total) || 0),
+        0
+    );
+
+    let hpp = dbSales.reduce((s, a) => {
+
+        let modal = 0;
+
+        a.items.forEach(i => {
+            modal += (
+                parseInt(i.harga_beli || 0)
+                *
+                parseInt(i.qty || 0)
+            );
+        });
+
+        return s + modal;
+
+    }, 0);
+
+    let lowItems = dbProducts.filter(p =>
+        parseInt(p.stok) <= parseInt(p.min_stok)
+        &&
+        p.kategori !== "Jasa Servis"
+    );
+
+    // =====================================
+    // UPDATE CARD
+    // =====================================
+
+    document.getElementById('dash-omzet').innerText =
+        `Rp ${omzet.toLocaleString('id-ID')}`;
+
+    document.getElementById('dash-laba').innerText =
+        `Rp ${(omzet - hpp).toLocaleString('id-ID')}`;
+
+    document.getElementById('dash-trx-count').innerText =
+        `${dbSales.length} Unit`;
+
+    document.getElementById('dash-alert-count').innerText =
+        `${lowItems.length} Item`;
+
+    // =====================================
+    // WARNING STOK
+    // =====================================
+
+    let html = '';
+
+    lowItems.forEach(i => {
+
+        html += `
+            <tr class="stok-menipis">
+                <td>${i.nama_barang}</td>
+                <td class="text-center">${i.stok}</td>
+                <td class="text-center">${i.min_stok}</td>
+            </tr>
+        `;
     });
 
-    return s + m;
-}, 0);
-            let lowItems = dbProducts.filter(p => parseInt(p.stok) <= parseInt(p.min_stok) && p.kategori !== "Jasa Servis");
+    document.getElementById(
+        'dash-stock-alert-table'
+    ).innerHTML =
+        html ||
+        `
+        <tr>
+            <td colspan="3"
+                class="text-center text-success">
+                Semua stok aman
+            </td>
+        </tr>
+        `;
 
-            document.getElementById('dash-omzet').innerText = `Rp ${omzet.toLocaleString('id-ID')}`;
-            document.getElementById('dash-laba').innerText = `Rp ${(omzet - hpp).toLocaleString('id-ID')}`;
-            document.getElementById('dash-trx-count').innerText = `${dbSales.length} Unit`;
-            document.getElementById('dash-alert-count').innerText = `${lowItems.length} Item`;
+    // =====================================
+    // GRAFIK 7 HARI TERAKHIR
+    // =====================================
 
-            let html = '';
-            lowItems.forEach(i => {
-                html += `<tr class="stok-menipis"><td>${i.nama_barang}</td><td class="text-center">${i.stok}</td><td class="text-center">${i.min_stok}</td></tr>`;
-            });
-            document.getElementById('dash-stock-alert-table').innerHTML = html || '<tr><td colspan="3" class="text-center text-success">Semua stok aman</td></tr>';
+    let omzetPerHari = {};
 
-            const ctx = document.getElementById('salesChart').getContext('2d');
-            if (salesChartInstance) salesChartInstance.destroy();
-            salesChartInstance = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: ['Hari Ini'],
-                    datasets: [{ label: 'Omzet', data: [omzet], backgroundColor: '#d32f2f' }]
-                },
-                options: { responsive: true, maintainAspectRatio: false }
-            });
+    dbSales.forEach(trx => {
+
+        if (!trx.tanggal) return;
+
+let tgl = String(trx.tanggal).trim();
+
+if (
+    tgl === '' ||
+    tgl.toLowerCase() === 'undefined' ||
+    tgl.toLowerCase() === 'null' ||
+    tgl.length < 4
+) {
+    return;
+}
+
+if (!omzetPerHari[tgl]) {
+    omzetPerHari[tgl] = 0;
+}
+
+        omzetPerHari[tgl] +=
+    parseInt(trx.total || 0);
+
+});
+
+// =====================================
+// SORT TANGGAL
+// =====================================
+
+let labels = Object.keys(omzetPerHari)
+    .sort((a, b) => {
+
+        let da = new Date(a);
+        let db = new Date(b);
+
+        return da - db;
+
+    })
+    .slice(-7);
+
+// =====================================
+// DATA GRAFIK
+// =====================================
+
+let originalLabels = labels;
+
+labels = labels.map(tgl => {
+
+    let d = new Date(tgl);
+
+    let hari = String(d.getDate())
+        .padStart(2, '0');
+
+    let bulan = String(d.getMonth() + 1)
+        .padStart(2, '0');
+
+    return `${hari}-${bulan}`;
+
+});
+
+let dataChart = originalLabels.map(tgl => {
+
+    return omzetPerHari[tgl] || 0;
+
+});
+
+    // =====================================
+    // RENDER CHART
+    // =====================================
+
+    const ctx =
+        document.getElementById('salesChart')
+        .getContext('2d');
+
+    if (salesChartInstance) {
+        salesChartInstance.destroy();
+    }
+
+    salesChartInstance = new Chart(ctx, {
+
+        type: 'bar',
+
+        data: {
+
+            labels: labels,
+
+            datasets: [{
+
+                label: 'Omzet Harian',
+
+                data: dataChart,
+
+                backgroundColor: '#d32f2f'
+
+            }]
+        },
+
+        options: {
+
+            responsive: true,
+
+            maintainAspectRatio: false,
+
+            scales: {
+
+                y: {
+                    beginAtZero: true
+                }
+            }
         }
+    });
+}
 
         function renderPOSProducts(kw = '') {
             let f = dbProducts;
